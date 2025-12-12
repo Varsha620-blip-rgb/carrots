@@ -201,6 +201,22 @@ def create_tables():
     )
     ''')
     
+    # Gold Rates table for tracking daily gold prices
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS gold_rates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rate_date DATE NOT NULL,
+        purity TEXT NOT NULL,
+        rate_per_gram REAL NOT NULL,
+        making_charges REAL DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        notes TEXT,
+        date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        date_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(rate_date, purity)
+    )
+    ''')
+    
     conn.commit()
     conn.close()
 

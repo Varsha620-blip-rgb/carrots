@@ -20,10 +20,13 @@ from pages.employees import employees_page, refresh_employees_list
 from pages.bills import bills_page, refresh_bills_list
 from pages.dashboard import dashboard_page
 from pages.reports import reports_page
+from pages.gold_rates import gold_rates_page
+from pages.data_import import data_import_page
 from pages.transactions import create_transaction
 from services.stock_service import StockService
 from services.sales_service import SalesService
 from services.purchase_service import PurchaseService
+from services.gold_rate_service import GoldRateService
 from utils.validators import Validators
 from utils.helpers import Helpers
 from utils.export import ExportService
@@ -96,6 +99,14 @@ def show_manage_employees():
 def show_reports():
     """Display reports page"""
     reports_page(content_frame)
+
+def show_gold_rates():
+    """Display gold rates management page"""
+    gold_rates_page(content_frame)
+
+def show_data_import():
+    """Display data import page"""
+    data_import_page(content_frame)
 
 # ============================================================================
 # MASTER MENU FUNCTIONS
@@ -445,6 +456,8 @@ make_nav_button(navbar, "📦 Manage Items", show_manage_items)
 make_nav_button(navbar, "👤 Customers", show_manage_customers)
 make_nav_button(navbar, "👥 Employees", show_manage_employees)
 make_nav_button(navbar, "📈 Reports", show_reports)
+make_nav_button(navbar, "💰 Gold Rates", show_gold_rates)
+make_nav_button(navbar, "📂 Data Import", show_data_import)
 
 # Separator
 separator2 = tk.Frame(navbar, bg=SECONDARY_COLOR, height=2)
@@ -487,7 +500,8 @@ item_category_submenu.add_command(label="Add Category", command=add_item_categor
 item_category_submenu.add_command(label="Manage Categories", command=lambda: dummy_action("Manage Categories"))
 master_menu.add_cascade(label="Item Category", menu=item_category_submenu)
 
-master_menu.add_command(label="Rate Update", command=lambda: dummy_action("Rate Update"))
+master_menu.add_command(label="Rate Update", command=show_gold_rates)
+master_menu.add_command(label="Data Import", command=show_data_import)
 
 barcode_submenu = Menu(master_menu, tearoff=0)
 barcode_submenu.add_command(label="Barcode List", command=lambda: dummy_action("Barcode List"))
