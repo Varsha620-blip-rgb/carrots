@@ -12,6 +12,8 @@ SECONDARY_COLOR = "#3a5068"
 SUCCESS_COLOR = "#28a745"
 WARNING_COLOR = "#ffc107"
 INFO_COLOR = "#17a2b8"
+DIAMOND_COLOR = "#9b59b6"
+GOLD_COLOR = "#f39c12"
 
 def dashboard_page(parent):
     for widget in parent.winfo_children():
@@ -38,8 +40,11 @@ def dashboard_page(parent):
     title_frame = ttk.Frame(scrollable_frame)
     title_frame.pack(fill=tk.X, padx=20, pady=10)
     
-    title_label = ttk.Label(title_frame, text="Dashboard", font=("Segoe UI", 20, "bold"))
+    title_label = ttk.Label(title_frame, text="Dashboard - Gold & Diamond", font=("Segoe UI", 20, "bold"))
     title_label.pack(side=tk.LEFT)
+    
+    date_label = ttk.Label(title_frame, text=datetime.now().strftime("%A, %d %B %Y"), font=("Segoe UI", 11))
+    date_label.pack(side=tk.RIGHT, padx=20)
     
     refresh_btn = ttk.Button(title_frame, text="Refresh", command=lambda: dashboard_page(parent))
     refresh_btn.pack(side=tk.RIGHT, padx=5)
@@ -74,14 +79,41 @@ def dashboard_page(parent):
     """)
     gold_rate_22k = current_rate[0][0] if current_rate else 0
     
+    gold_stock = fetch_query("""
+        SELECT COALESCE(SUM(i.quantity * i.price), 0), COALESCE(SUM(i.weight_in_gm), 0)
+        FROM items i
+        JOIN materials m ON i.material_id = m.id
+        WHERE i.is_active = 1 AND m.name = 'Gold'
+    """)
+    gold_value = gold_stock[0][0] if gold_stock else 0
+    gold_weight = gold_stock[0][1] if gold_stock else 0
+    
+    diamond_stock = fetch_query("""
+        SELECT COALESCE(SUM(i.quantity * i.price), 0), COALESCE(SUM(i.diamond_carat), 0)
+        FROM items i
+        JOIN materials m ON i.material_id = m.id
+        WHERE i.is_active = 1 AND m.name = 'Diamond'
+    """)
+    diamond_value = diamond_stock[0][0] if diamond_stock else 0
+    diamond_carat = diamond_stock[0][1] if diamond_stock else 0
+    
+    pending_orders = fetch_query("""
+        SELECT COUNT(*) FROM advance_orders WHERE status IN ('Pending', 'In Progress')
+    """)[0][0]
+    
+    overdue_orders = fetch_query("""
+        SELECT COUNT(*) FROM advance_orders 
+        WHERE status IN ('Pending', 'In Progress') AND expected_delivery_date < ?
+    """, (today,))[0][0]
+    
     stats_frame = ttk.Frame(scrollable_frame)
     stats_frame.pack(fill=tk.X, padx=20, pady=10)
     
     stats = [
         ("Today's Sales", f"₹{today_sales:,.2f}", SUCCESS_COLOR),
         ("Today's Purchases", f"₹{today_purchases:,.2f}", WARNING_COLOR),
-        ("Gold Rate (22K)", f"₹{gold_rate_22k:,.2f}/gm", INFO_COLOR),
-        ("Stock Value", f"₹{total_stock_value:,.2f}", PRIMARY_COLOR),
+        ("Gold Rate (22K)", f"₹{gold_rate_22k:,.2f}/gm", GOLD_COLOR),
+        ("Total Stock Value", f"₹{total_stock_value:,.2f}", PRIMARY_COLOR),
     ]
     
     for i, (title, value, color) in enumerate(stats):
@@ -91,14 +123,27 @@ def dashboard_page(parent):
     stats_frame2.pack(fill=tk.X, padx=20, pady=10)
     
     stats2 = [
-        ("Total Customers", str(total_customers), INFO_COLOR),
-        ("Total Items", str(total_items), SUCCESS_COLOR),
-        ("Active Employees", str(total_employees), WARNING_COLOR),
-        ("Total Suppliers", str(total_suppliers), SECONDARY_COLOR),
+        ("Gold Stock", f"₹{gold_value:,.0f}\n({gold_weight:.2f} gm)", GOLD_COLOR),
+        ("Diamond Stock", f"₹{diamond_value:,.0f}\n({diamond_carat:.2f} ct)", DIAMOND_COLOR),
+        ("Pending Orders", f"{pending_orders}" + (f" ({overdue_orders} overdue)" if overdue_orders else ""), WARNING_COLOR if overdue_orders else INFO_COLOR),
+        ("Total Customers", str(total_customers), SUCCESS_COLOR),
     ]
     
     for i, (title, value, color) in enumerate(stats2):
         create_stat_card(stats_frame2, title, value, i, color)
+    
+    stats_frame3 = ttk.Frame(scrollable_frame)
+    stats_frame3.pack(fill=tk.X, padx=20, pady=10)
+    
+    stats3 = [
+        ("Total Items", str(total_items), SUCCESS_COLOR),
+        ("Active Employees", str(total_employees), WARNING_COLOR),
+        ("Total Suppliers", str(total_suppliers), SECONDARY_COLOR),
+        ("Net Today", f"₹{(today_sales - today_purchases):,.2f}", SUCCESS_COLOR if today_sales >= today_purchases else WARNING_COLOR),
+    ]
+    
+    for i, (title, value, color) in enumerate(stats3):
+        create_stat_card(stats_frame3, title, value, i, color)
     
     charts_frame = ttk.Frame(scrollable_frame)
     charts_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
@@ -108,10 +153,10 @@ def dashboard_page(parent):
     
     create_sales_chart(left_chart)
     
-    right_chart = ttk.LabelFrame(charts_frame, text="Stock Distribution by Category", padding=10)
+    right_chart = ttk.LabelFrame(charts_frame, text="Stock Distribution by Material", padding=10)
     right_chart.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
     
-    create_stock_pie_chart(right_chart)
+    create_material_pie_chart(right_chart)
     
     bottom_frame = ttk.Frame(scrollable_frame)
     bottom_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
@@ -121,10 +166,10 @@ def dashboard_page(parent):
     
     create_recent_sales_table(recent_sales_frame)
     
-    top_items_frame = ttk.LabelFrame(bottom_frame, text="Top Items by Value", padding=10)
-    top_items_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+    pending_orders_frame = ttk.LabelFrame(bottom_frame, text="Pending Advance Orders", padding=10)
+    pending_orders_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
     
-    create_top_items_chart(top_items_frame)
+    create_pending_orders_table(pending_orders_frame)
 
 def create_stat_card(parent, title, value, column, color):
     card = tk.Frame(parent, bg="white", relief=tk.RAISED, bd=1)
@@ -140,7 +185,7 @@ def create_stat_card(parent, title, value, column, color):
     title_lbl = tk.Label(content, text=title, font=("Segoe UI", 10), bg="white", fg="#666")
     title_lbl.pack(anchor="w")
     
-    value_lbl = tk.Label(content, text=value, font=("Segoe UI", 18, "bold"), bg="white", fg="#333")
+    value_lbl = tk.Label(content, text=value, font=("Segoe UI", 16, "bold"), bg="white", fg="#333")
     value_lbl.pack(anchor="w")
 
 def create_sales_chart(parent):
@@ -170,8 +215,8 @@ def create_sales_chart(parent):
     x = range(len(dates))
     width = 0.35
     
-    bars1 = ax.bar([i - width/2 for i in x], sales_data, width, label='Sales', color=SUCCESS_COLOR)
-    bars2 = ax.bar([i + width/2 for i in x], purchase_data, width, label='Purchases', color=WARNING_COLOR)
+    ax.bar([i - width/2 for i in x], sales_data, width, label='Sales', color=SUCCESS_COLOR)
+    ax.bar([i + width/2 for i in x], purchase_data, width, label='Purchases', color=WARNING_COLOR)
     
     ax.set_ylabel('Amount (₹)')
     ax.set_xticks(x)
@@ -185,27 +230,30 @@ def create_sales_chart(parent):
     canvas.draw()
     canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-def create_stock_pie_chart(parent):
-    category_data = fetch_query("""
-        SELECT COALESCE(ic.name, 'Uncategorized') as category, 
-               COUNT(*) as count,
+def create_material_pie_chart(parent):
+    material_data = fetch_query("""
+        SELECT COALESCE(m.name, 'Other') as material, 
                COALESCE(SUM(i.quantity * i.price), 0) as value
         FROM items i
-        LEFT JOIN item_categories ic ON i.category_id = ic.id
+        LEFT JOIN materials m ON i.material_id = m.id
         WHERE i.is_active = 1
-        GROUP BY ic.name
+        GROUP BY m.name
         ORDER BY value DESC
-        LIMIT 6
     """)
     
-    if not category_data or all(row[2] == 0 for row in category_data):
+    if not material_data or all(row[1] == 0 for row in material_data):
         no_data_label = ttk.Label(parent, text="No stock data available", font=("Segoe UI", 12))
         no_data_label.pack(expand=True)
         return
     
-    labels = [row[0] for row in category_data]
-    sizes = [float(row[2]) for row in category_data]
-    colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40']
+    labels = [row[0] for row in material_data if row[1] > 0]
+    sizes = [float(row[1]) for row in material_data if row[1] > 0]
+    colors = [GOLD_COLOR, DIAMOND_COLOR, '#C0C0C0', '#E5E4E2', '#9966FF', '#FF9F40']
+    
+    if not labels:
+        no_data_label = ttk.Label(parent, text="No stock data available", font=("Segoe UI", 12))
+        no_data_label.pack(expand=True)
+        return
     
     fig = Figure(figsize=(4, 3), dpi=100)
     ax = fig.add_subplot(111)
@@ -242,33 +290,27 @@ def create_recent_sales_table(parent):
     
     tree.pack(fill=tk.BOTH, expand=True)
 
-def create_top_items_chart(parent):
-    items_data = fetch_query("""
-        SELECT name, quantity * price as value
-        FROM items
-        WHERE is_active = 1 AND quantity > 0
-        ORDER BY value DESC
+def create_pending_orders_table(parent):
+    columns = ('Order #', 'Customer', 'Material', 'Delivery')
+    tree = ttk.Treeview(parent, columns=columns, height=6, show='headings')
+    
+    for col in columns:
+        tree.heading(col, text=col)
+        tree.column(col, width=100)
+    
+    pending_orders = fetch_query("""
+        SELECT ao.order_number, c.name, ao.material_type, ao.expected_delivery_date
+        FROM advance_orders ao
+        JOIN customers c ON ao.customer_id = c.id
+        WHERE ao.status IN ('Pending', 'In Progress')
+        ORDER BY ao.expected_delivery_date ASC
         LIMIT 5
     """)
     
-    if not items_data:
-        no_data_label = ttk.Label(parent, text="No items data available", font=("Segoe UI", 12))
-        no_data_label.pack(expand=True)
-        return
+    today = datetime.now().date()
+    for order in pending_orders:
+        is_overdue = order[3] and str(order[3]) < str(today)
+        delivery_text = str(order[3]) + (' (!)' if is_overdue else '') if order[3] else 'N/A'
+        tree.insert('', 'end', values=(order[0], order[1], order[2], delivery_text))
     
-    names = [row[0][:15] + '...' if len(row[0]) > 15 else row[0] for row in items_data]
-    values = [float(row[1]) for row in items_data]
-    
-    fig = Figure(figsize=(4, 3), dpi=100)
-    ax = fig.add_subplot(111)
-    
-    bars = ax.barh(names, values, color=INFO_COLOR)
-    ax.set_xlabel('Value (₹)')
-    ax.invert_yaxis()
-    ax.set_facecolor('#f8f9fa')
-    fig.patch.set_facecolor('#f8f9fa')
-    fig.tight_layout()
-    
-    canvas = FigureCanvasTkAgg(fig, master=parent)
-    canvas.draw()
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+    tree.pack(fill=tk.BOTH, expand=True)

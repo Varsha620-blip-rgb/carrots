@@ -2,7 +2,7 @@ from database.db import execute_query, fetch_query, fetch_one
 from datetime import datetime, date
 
 class GoldRateService:
-    PURITIES = ['24K', '22K', '18K', '14K', '916', '750', '585']
+    PURITIES = ['24K', '22K', '21K', '18K', '14K', '916', '875', '750', '585']
     
     @staticmethod
     def get_current_rate(purity='22K'):
@@ -101,3 +101,98 @@ class GoldRateService:
             making = weight_gm * rate_info['making_charges']
             return base_value + making
         return base_value
+
+
+class DiamondRateService:
+    CLARITIES = ['FL', 'IF', 'VVS1', 'VVS2', 'VS1', 'VS2', 'SI1', 'SI2', 'I1', 'I2', 'I3']
+    COLORS = ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']
+    CUTS = ['Excellent', 'Very Good', 'Good', 'Fair', 'Poor']
+    SHAPES = ['Round', 'Princess', 'Cushion', 'Oval', 'Emerald', 'Pear', 'Marquise', 'Radiant', 'Heart', 'Asscher']
+    
+    @staticmethod
+    def update_rate(clarity, color, rate_per_carat, carat_from=0, carat_to=10, 
+                   shape='Round', certification=None, notes="", rate_date=None):
+        if rate_date is None:
+            rate_date = date.today()
+        
+        existing = fetch_one("""
+            SELECT id FROM diamond_rates 
+            WHERE clarity = ? AND color = ? AND shape = ? AND rate_date = ?
+        """, (clarity, color, shape, rate_date))
+        
+        if existing:
+            execute_query("""
+                UPDATE diamond_rates 
+                SET rate_per_carat = ?, carat_from = ?, carat_to = ?, certification = ?, 
+                    notes = ?, is_active = 1, date_modified = ?
+                WHERE id = ?
+            """, (rate_per_carat, carat_from, carat_to, certification, notes, datetime.now(), existing[0]))
+        else:
+            execute_query("""
+                INSERT INTO diamond_rates (rate_date, shape, clarity, color, carat_from, carat_to, 
+                                          rate_per_carat, certification, notes, date_created, date_modified)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (rate_date, shape, clarity, color, carat_from, carat_to, 
+                  rate_per_carat, certification, notes, datetime.now(), datetime.now()))
+        return True
+    
+    @staticmethod
+    def get_current_rate(clarity='VS1', color='G', shape='Round'):
+        result = fetch_one("""
+            SELECT id, rate_date, shape, clarity, color, carat_from, carat_to, 
+                   rate_per_carat, certification, notes
+            FROM diamond_rates
+            WHERE clarity = ? AND color = ? AND shape = ? AND is_active = 1
+            ORDER BY rate_date DESC
+            LIMIT 1
+        """, (clarity, color, shape))
+        
+        if result:
+            return {
+                'id': result[0],
+                'rate_date': result[1],
+                'shape': result[2],
+                'clarity': result[3],
+                'color': result[4],
+                'carat_from': result[5],
+                'carat_to': result[6],
+                'rate_per_carat': result[7],
+                'certification': result[8],
+                'notes': result[9]
+            }
+        return None
+    
+    @staticmethod
+    def get_all_current_rates():
+        return fetch_query("""
+            SELECT DISTINCT clarity, color, shape, rate_per_carat
+            FROM diamond_rates
+            WHERE is_active = 1
+            ORDER BY clarity, color
+        """)
+    
+    @staticmethod
+    def get_rate_history(limit=50):
+        return fetch_query("""
+            SELECT id, rate_date, shape, clarity, color, carat_from, carat_to, 
+                   rate_per_carat, certification, notes
+            FROM diamond_rates
+            WHERE is_active = 1
+            ORDER BY rate_date DESC, id DESC
+            LIMIT ?
+        """, (limit,))
+    
+    @staticmethod
+    def calculate_diamond_value(carat, clarity='VS1', color='G', shape='Round'):
+        rate = DiamondRateService.get_current_rate(clarity, color, shape)
+        if rate:
+            return carat * rate['rate_per_carat']
+        return 0
+    
+    @staticmethod
+    def delete_rate(rate_id):
+        execute_query("""
+            UPDATE diamond_rates SET is_active = 0, date_modified = ?
+            WHERE id = ?
+        """, (datetime.now(), rate_id))
+        return True
